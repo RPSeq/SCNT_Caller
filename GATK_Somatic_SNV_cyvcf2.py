@@ -142,6 +142,7 @@ def main():
     reader.update("TYPE", "String", 1, "Varant Type (SNPS: TS/TV) (INDELS: INS/DEL)")
     reader.update("TISSUE", "String", 1, "Source Tissue Type")
     reader.update("CASE", "String", 1, "Control or SCNT?")
+    reader.update("EXPT", "String", 1, "Experiment")
 
     if not args.o:
         writer = cyvcf2.Writer("/dev/stdout", reader)
@@ -217,12 +218,12 @@ def main():
             if DEPTHS[i] >= min_depth \
                 and DEPTHS[i] <= max_depth \
                 and ABs[i] >= VAF \
-                and AAG_RR_ratios[i] >=AAG_RR_MIN:
+                and AAG_RR_ratios[i] >= AAG_RR_MIN:
                 
 
                 for j in range(len(samples)):
                     control = False
-                    other = False
+                    #other = False
                     if i == j:
                         continue
 
@@ -230,8 +231,7 @@ def main():
                     # control is only control from same animal
                     # other is any other sample
                     if sample_map[samples[j]]['Animal'] == sample_map[samples[i]]['Animal']:
-                        control = True  
-                        
+                        control = True
 
                     ratio_min = 1
                     if control:
@@ -249,6 +249,7 @@ def main():
                     #set new info fields and write record
                     var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
                     var.INFO['CASE'] = sample_map[samples[i]]['Case']
+                    var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
                     var.INFO["UNIQ"] = samples[i]
                     var.INFO["UAB"] = str(numpy.around(ABs[i], 3))
                     writer.write_record(var)
