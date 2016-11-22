@@ -1,4 +1,4 @@
-import sys, math, numpy
+import sys, math, numpy, pyfaidx
 from argparse import RawTextHelpFormatter, ArgumentParser
 from collections import defaultdict
 import cyvcf2
@@ -13,16 +13,16 @@ __date__ = "$Date: 2016-2-8 13:45 $"
 def get_args():
     parser = ArgumentParser(
         formatter_class=RawTextHelpFormatter, add_help=False)
+    
+    parser.add_argument('-s', metavar='SAMPLE_MAP',
+                        help='Sample Map Columns: \n(Animal, Sample, Source, Experiment, Case)',
+                        required=True)
 
     parser.add_argument('-i', metavar='VCF_IN', 
-                        help='Input VCF (stdin)')
+                        help='Input VCF [stdin]')
 
     parser.add_argument('-o', metavar='VCF_OUT', 
-                        help='Output VCF (stdout)')
-
-    parser.add_argument('-s', metavar='SAMPLE_MAP',
-                        help='Sample Map File: \n (< Animal >  < Sample >  < Source >  < Experiment >  < Case (SCNT/Control) >)',
-                        required=True)
+                        help='Output VCF [stdout]')
 
     parser.add_argument('--indel', 
                         help='Indel mode', action='store_true')
@@ -42,17 +42,19 @@ def get_args():
     # parse the arguments
     args = parser.parse_args()
     
-    # bail if no BAM file
+    # bail if no input file or stream
     if args.i is None:
         if sys.stdin.isatty():
             parser.print_help()
             exit(1)
+        args.i = "-"
     
     # send back the user input
     return args
 
 def unphred(array):
     return numpy.power(10., numpy.divide(array, -10.))
+
 
 def get_PL_ratio(PL, AAG_IDX, RR_IDX, case=True):
 
@@ -75,6 +77,7 @@ def get_PL_ratio(PL, AAG_IDX, RR_IDX, case=True):
     return ratio
 
 def load_sample_map(infile):
+
     infile = open(infile, 'r')
     sample_map = defaultdict(dict)
     header = False
@@ -114,6 +117,7 @@ class Usage(Exception):
 def main():
 
     #parse arguments
+    genome = pyfaidx.Fasta("GRCm38.fa")
     args = get_args()
     indel = args.indel
     fnr = args.fnr
@@ -143,6 +147,8 @@ def main():
     reader.update("TISSUE", "String", 1, "Source Tissue Type")
     reader.update("CASE", "String", 1, "Control or SCNT?")
     reader.update("EXPT", "String", 1, "Experiment")
+    reader.update("FILTER", "String", 1, "VAF Filter PASS/FAIL")
+    reader.update("CONTEXT", "String", 1, "Trinucleotide Context")
 
     if not args.o:
         writer = cyvcf2.Writer("/dev/stdout", reader)
@@ -207,6 +213,7 @@ def main():
         ABs = numpy.true_divide(ALT_DEPTHS, DEPTHS)
 
         for i in range(len(samples)):
+            filt = "PASS"
             if not unique:
                 break
 
@@ -217,13 +224,13 @@ def main():
             #criteria for presence in given sample
             if DEPTHS[i] >= min_depth \
                 and DEPTHS[i] <= max_depth \
-                and ABs[i] >= VAF \
                 and AAG_RR_ratios[i] >= AAG_RR_MIN:
-                
 
+                if ABs[i] < VAF: filt = "FAIL"
+                
                 for j in range(len(samples)):
                     control = False
-                    #other = False
+
                     if i == j:
                         continue
 
@@ -233,6 +240,7 @@ def main():
                     if sample_map[samples[j]]['Animal'] == sample_map[samples[i]]['Animal']:
                         control = True
 
+                    #if not control, RR_AAG_MIN is 1.
                     ratio_min = 1
                     if control:
                         ratio_min = RR_AAG_MIN
@@ -246,12 +254,26 @@ def main():
                         break
 
                 if unique:
-                    #set new info fields and write record
+
+                    #get trinucleotide context (VCF coords are 1-based)
+                    context = genome[str(var.CHROM)][var.POS-2:var.POS+1]
+
+                    #ts or tv?
+                    tstv = 'Tv'
+                    if var.is_transition:
+                        tstv = 'Tr'
+
+                    #set new info fields
+                    var.INFO["CONTEXT"] = context.seq
                     var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
                     var.INFO['CASE'] = sample_map[samples[i]]['Case']
                     var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
                     var.INFO["UNIQ"] = samples[i]
                     var.INFO["UAB"] = str(numpy.around(ABs[i], 3))
+                    var.INFO["FILTER"] = filt
+                    var.INFO['TYPE'] = tstv
+
+                    #write record
                     writer.write_record(var)
 
 if __name__ == "__main__":
