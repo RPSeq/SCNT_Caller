@@ -1,4 +1,4 @@
-import sys, math, numpy, pyfaidx
+import sys, numpy, pyfaidx
 from argparse import RawTextHelpFormatter, ArgumentParser
 from collections import defaultdict
 import cyvcf2
@@ -18,14 +18,15 @@ def get_args():
                         help='Sample Map Columns: \n(Animal, Sample, Source, Experiment, Case)',
                         required=True)
 
+    parser.add_argument('-r', metavar='REF', 
+                        help='Reference Genome (.fa, indexed)',
+                        required=True)
+
     parser.add_argument('-i', metavar='VCF_IN', 
                         help='Input VCF [stdin]')
 
     parser.add_argument('-o', metavar='VCF_OUT', 
                         help='Output VCF [stdout]')
-
-    parser.add_argument('--indel', 
-                        help='Indel mode', action='store_true')
 
     parser.add_argument('--fnr', 
                         help='FNR test mode', action='store_true')
@@ -36,7 +37,10 @@ def get_args():
     parser.add_argument('--svaf', 
                         help='Sex VAF Minimum for call')
 
-    parser.add_argument('-h','--help', action='help') 
+    parser.add_argument('--indel', 
+                        help='Indel mode', action='store_true')
+
+    parser.add_argument('-h','--help', action='help')
 
 
     # parse the arguments
@@ -54,27 +58,6 @@ def get_args():
 
 def unphred(array):
     return numpy.power(10., numpy.divide(array, -10.))
-
-
-def get_PL_ratio(PL, AAG_IDX, RR_IDX, case=True):
-
-    #get AAG and RR PL values
-    AAG_PL = unphred(int(PL[AAG_IDX]))
-    RR_PL = unphred(int(PL[RR_IDX]))
-
-    num = AAG_PL
-    denom = RR_PL
-
-    if not case:
-        num = RR_PL
-        denom = AAG_PL
-
-    try:
-        ratio = num / denom
-    except ZeroDivisionError:
-        ratio = float('inf')
-
-    return ratio
 
 def load_sample_map(infile):
 
@@ -117,10 +100,10 @@ class Usage(Exception):
 def main():
 
     #parse arguments
-    genome = pyfaidx.Fasta("GRCm38.fa")
     args = get_args()
     indel = args.indel
     fnr = args.fnr
+    genome = pyfaidx.Fasta(args.r)
 
     #should look specifically at X chrom VAFs in males
     VAF=0.30
@@ -226,17 +209,17 @@ def main():
                 and DEPTHS[i] <= max_depth \
                 and AAG_RR_ratios[i] >= AAG_RR_MIN:
 
-                if ABs[i] < VAF: filt = "FAIL"
+                if ABs[i] < VAF: 
+                    filt = "FAIL"
                 
                 for j in range(len(samples)):
-                    control = False
-
                     if i == j:
                         continue
 
                     #check for case/control/other
                     # control is only control from same animal
                     # other is any other sample
+                    control = False
                     if sample_map[samples[j]]['Animal'] == sample_map[samples[i]]['Animal']:
                         control = True
 
@@ -264,17 +247,18 @@ def main():
                         tstv = 'Tr'
 
                     #set new info fields
-                    var.INFO["CONTEXT"] = context.seq
+                    var.INFO['CONTEXT'] = context.seq
                     var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
                     var.INFO['CASE'] = sample_map[samples[i]]['Case']
                     var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
-                    var.INFO["UNIQ"] = samples[i]
-                    var.INFO["UAB"] = str(numpy.around(ABs[i], 3))
-                    var.INFO["FILTER"] = filt
+                    var.INFO['UNIQ'] = samples[i]
+                    var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
+                    var.INFO['FILTER'] = filt
                     var.INFO['TYPE'] = tstv
 
                     #write record
                     writer.write_record(var)
+
 
 if __name__ == "__main__":
     try:
