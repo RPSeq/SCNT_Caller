@@ -1,25 +1,14 @@
 import pysam, sys
 
-
 infile = sys.argv[1]
 vcf_file = pysam.VariantFile(infile, 'r')
-
-
-
 samples = vcf_file.header.samples
 num = len(samples)
 min_su = 5
 vcf_name = "SV_SU"+str(min_su)+"_uniqs.vcf"
-
-
 vcf_out = pysam.VariantFile(vcf_name, 'w', header=vcf_file.header)
-
 sample_outs = [pysam.VariantFile(sample, 'w', header=vcf_file.header) for sample in samples]
 
-matrix = [[0 for i in samples] for j in samples]
-uniques = [0 for i in samples]
-
-# count = 0
 for var in vcf_file:
     for i in range(num):
 
