@@ -9,7 +9,8 @@ __version__ = "$Revision: 0.0.1 $"
 __date__ = "$Date: 2016-2-8 13:45 $"
 
 
-
+#need to modify this for submodules:
+#need snp, indel (or SNPDEL), mei (melt), sv (lumpy/svtyper)
 def get_args():
     parser = ArgumentParser(
         formatter_class=RawTextHelpFormatter, add_help=False)
@@ -86,8 +87,12 @@ def load_sample_map(infile):
     infile.close()
     return sample_map
 
+def same_animal(smap, samples, i , j):
 
+    if smap[samples[j]]['Animal'] == smap[samples[i]]['Animal']:
+        return True
 
+    return False
 
 # ============================================
 # driver
@@ -117,8 +122,9 @@ def main():
         print("Error: Misformatted Sample map (-s)")
         exit(1)
 
-    reader = cyvcf2.VCF(args.i, gts012=True)
     #gts012 sets the uncalled GTs to 3
+    reader = cyvcf2.VCF(args.i, gts012=True)    
+    
 
     #get list of samples
     samples = reader.samples
@@ -220,7 +226,7 @@ def main():
                     # control is only control from same animal
                     # other is any other sample
                     control = False
-                    if sample_map[samples[j]]['Animal'] == sample_map[samples[i]]['Animal']:
+                    if same_animal(sample_map, samples, i, j):
                         control = True
 
                     #if not control, RR_AAG_MIN is 1.
@@ -228,7 +234,8 @@ def main():
                     if control:
                         ratio_min = RR_AAG_MIN
 
-                    #criteria for presence in other samples (need to make this control vs ALL j_ratio)
+                    #criteria for presence in other samples 
+                    #   (need to make this control vs ALL j_ratio)
                     if DEPTHS[j] < min_depth \
                         or DEPTHS[j] > max_depth \
                         or ABs[j] > MAX_VAF \

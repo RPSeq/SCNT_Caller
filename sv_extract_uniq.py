@@ -7,7 +7,6 @@ num = len(samples)
 min_su = 5
 vcf_name = "SV_SU"+str(min_su)+"_uniqs.vcf"
 vcf_out = pysam.VariantFile(vcf_name, 'w', header=vcf_file.header)
-sample_outs = [pysam.VariantFile(sample, 'w', header=vcf_file.header) for sample in samples]
 
 for var in vcf_file:
     for i in range(num):
@@ -36,16 +35,10 @@ for var in vcf_file:
 
             if unique:
                 vcf_out.write(var)
-                sample_outs[i].write(var)
 
 
-
-
-
-for out in sample_outs:
-    out.close()
 vcf_file.close()
-vcf_out.close()
+
 
 
 
