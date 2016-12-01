@@ -192,14 +192,13 @@ def snp(args):
             VAF=SVAF
 
         #max alt allele balance for control samples
-        MAX_VAF = 0.05
-        # if var.is_snp:
-        #     MAX_VAF = 0.05
-        # if var.is_indel:
-        #     MAX_VAF = 0
-        # else:
-        #     sys.stderr.write("Skipping Variant: Not SNP/Indel")
-        #     continue
+        if var.is_snp:
+            MAX_VAF = 0.05
+        elif var.is_indel:
+            MAX_VAF = 0
+        else:
+            sys.stderr.write("Skipping Variant: Not SNP/Indel")
+            continue
 
         unique = True
 
@@ -284,6 +283,8 @@ def snp(args):
                     #write record
                     writer.write_record(var)
 
+    writer.close()
+
 def sv(args):
 
 
@@ -312,17 +313,17 @@ def sv(args):
     min_su = 5
     for var in reader:
         SUs = var.format('SU')
+
         ABs = var.format('AB')
 
-
         for i in range(len(samples)):
-            if SUs[i] >= min_su and ABs[i][0] >= 0.10:
+            if SUs[i][0] >= min_su and ABs[i][0] >= 0.20:
                 unique = True
 
                 for j in range(len(samples)):
                     if j != i:
 
-                        if ABs[j] > 0:
+                        if ABs[j][0] > 0.05:
                             unique = False
                             break
 
@@ -335,6 +336,7 @@ def sv(args):
                     var.INFO['UAB'] = str(numpy.around(ABs[i][0], 3))
                     # var.INFO['FILTER'] = filt
                     writer.write_record(var)
+    writer.close()
 
 
 def mei(args):
@@ -392,6 +394,8 @@ def mei(args):
                         var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
                         # var.INFO['FILTER'] = filt
                         writer.write_record(var)
+
+    writer.close()
 
 
 
