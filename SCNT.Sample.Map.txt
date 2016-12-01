@@ -10,9 +10,9 @@ B3	B	MitralTuft	MT	SCNT
 B4	B	MitralTuft	MT	SCNT
 E0	E	Thymus	MT	Control
 E1	E	MitralTuft	MT	SCNT
-F0	F	Thymus	ROD	SCNT
-F1	F	NRL_ROD	ROD	Control
-G0	G	Thymus	ROD	SCNT
-G1	G	NRL_ROD	ROD	Control
-H0	H	Thymus	ROD	SCNT
-H1	H	NRL_ROD	ROD	Control
+F0	F	Thymus	ROD	Control
+F1	F	NRL_ROD	ROD	SCNT
+G0	G	Thymus	ROD	Control
+G1	G	NRL_ROD	ROD	SCNT
+H0	H	Thymus	ROD	Control
+H1	H	NRL_ROD	ROD	SCNT
