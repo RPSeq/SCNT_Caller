@@ -58,6 +58,13 @@ def get_args():
     parser_snp.add_argument('--svaf', 
                         help='Sex VAF Minimum for SNP call')
 
+    parser_snp.add_argument('--low', action='store_true',
+                        help='Annotate instead of discarding low VAF calls')
+
+    reqs[1].add_argument('-c', metavar='counts',
+                        help='Counts output file',
+                        required=True)
+
     # parse the arguments
     args = parser.parse_args()
     
@@ -229,17 +236,20 @@ def snp(args):
         ABs = numpy.true_divide(ALT_DEPTHS, DEPTHS)
 
         for i in range(len(samples)):
-            filt = "PASS"
+            vaf_filt = "PASS"
             if not unique:
                 break
 
             #criteria for presence in given sample
-            if DEPTHS[i] >= min_depth \
-                and DEPTHS[i] <= max_depth \
-                and AAG_RR_ratios[i] >= AAG_RR_MIN:
+            if (DEPTHS[i] >= min_depth and
+                DEPTHS[i] <= max_depth and
+                AAG_RR_ratios[i] >= AAG_RR_MIN):
 
-                if ABs[i] < VAF: 
-                    filt = "FAIL"
+                if ABs[i] < VAF:
+                    if args.low:
+                        vaf_filt = "FAIL"
+                    else:
+                        continue
                 
                 for j in range(len(samples)):
                     if i == j:
@@ -259,10 +269,10 @@ def snp(args):
 
                     #criteria for presence in other samples 
                     #   (need to make this control vs ALL j_ratio)
-                    if DEPTHS[j] < min_depth \
-                        or DEPTHS[j] > max_depth \
-                        or ABs[j] > MAX_VAF \
-                        or RR_AAG_ratios[j] < ratio_min:
+                    if (DEPTHS[j] < min_depth or
+                        DEPTHS[j] > max_depth or
+                        ABs[j] > MAX_VAF or
+                        RR_AAG_ratios[j] < ratio_min):
                         unique = False
                         break
 
@@ -283,7 +293,7 @@ def snp(args):
                     var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
                     var.INFO['UNIQ'] = samples[i]
                     var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
-                    var.INFO['FILTER'] = filt
+                    var.INFO['FILTER'] = vaf_filt
                     var.INFO['TYPE'] = tstv
 
                     #write record
@@ -299,8 +309,19 @@ def snp_fnr(args):
     VAF=0.30
 
     #gts012 sets the uncalled GTs to 3
-    reader = cyvcf2.VCF(args.i, gts012=True)    
-    
+    reader = cyvcf2.VCF(args.i, gts012=True)
+
+    reader.update("ANIMAL", "String", ".", "Animals with this GSS var")
+    reader.update("PRESENT", "String", ".", "SCNT lines detecting this GSS var")
+
+    #open writerr
+    if not args.o:
+        writer = cyvcf2.Writer("/dev/stdout", reader)
+    else:
+        writer = cyvcf2.Writer(args.o, reader)
+
+    counts_out = open(args.c, 'w')
+
     #get list of samples
     samples = reader.samples
 
@@ -309,7 +330,7 @@ def snp_fnr(args):
 
     #load sample map and get animal sample groups
     sample_map, animal_map = load_sample_map(args.m)
-    print animal_map
+
 
     AAG_RR_MIN = numpy.power(10.,10.)
 
@@ -320,6 +341,12 @@ def snp_fnr(args):
 
     #iterate over vars
     for var in reader:
+
+        #false by default
+        gss = False
+
+        animals = []
+        present = []
 
         #max alt allele balance for control samples
         if not var.is_snp:
@@ -342,36 +369,54 @@ def snp_fnr(args):
         ABs = numpy.true_divide(ALT_DEPTHS, DEPTHS)
 
         for animal, group in animal_map.items():
-            present = False
+
             #get sample name of control
             control = group['Control'][0]
             SCNTs = group['SCNT']
 
-            #if var was called het in the control,
-            if GTs[stoi[control]] == 1:
+            #if var not called in the control, continue:
+            # if GTs[stoi[control]] == [0,3]:
+            #     continue
 
-                #check the samples.
+            ALL = [control] + SCNTs
+
+            #if at least one sample was called het, 
+            #   var is present in mouse
+            if 1 in [GTs[stoi[x]] for x in ALL]:
+                counter[control] += 1
+                gss = True
+                control_depth = False
+                if (DEPTHS[stoi[control]] >= min_depth and
+                    DEPTHS[stoi[control]] <= max_depth):
+                    control_depth = True
+
+                animals.append(animal)
+
                 for sample in SCNTs:
+                    i = stoi[sample]
 
-                    #if at least one sample was called het, 
-                    #   var is present in mouse
-                    if GTs[stoi[sample]] == 1:
-                        present = True
-                        counter[control] += 1
+                    if (DEPTHS[i] >= min_depth and
+                        DEPTHS[i] <= max_depth and
+                        control_depth and
+                        AAG_RR_ratios[i] >= AAG_RR_MIN and
+                        ABs[i] >= VAF and
+                        GTs[i] == 1):
 
-                        for sample in SCNTs:
-                            i = stoi[sample]
+                        counter[sample] += 1
+                        present.append(sample)
 
-                            if DEPTHS[i] >= min_depth \
-                            and DEPTHS[i] <= max_depth \
-                            and AAG_RR_ratios[i] >= AAG_RR_MIN \
-                            and ABs[i] >= VAF:
+        if gss:
+            var.INFO['ANIMAL'] = ",".join(animals)
+            var.INFO['PRESENT'] = ",".join(present)
+            writer.write_record(var)
 
-                                counter[sample] += 1
-                        break
+    for sample in sorted(counter.keys()):
+        outstr = "\t".join([sample, sample_map[sample]['Case'], str(counter[sample])])
+        counts_out.write(outstr+"\n")
 
-    for sample in counter:
-        print sample, counter[sample]
+    writer.close()
+    counts_out.close()
+
 
 def sv(args):
 
