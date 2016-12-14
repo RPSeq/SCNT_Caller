@@ -1,6 +1,6 @@
 import sys, numpy, pyfaidx
 from argparse import RawTextHelpFormatter, ArgumentParser
-from collections import defaultdict
+from collections import defaultdict, Counter
 import cyvcf2
 
 
@@ -21,6 +21,9 @@ def get_args():
     parser_snp = subparsers.add_parser('SNP', help='SNP Calling Mode')
     parser_snp.set_defaults(func=snp)
 
+    parser_fnr = subparsers.add_parser('FNR', help='SNP FNR Mode')
+    parser_fnr.set_defaults(func=snp_fnr)
+
     #MEI mode
     parser_mei = subparsers.add_parser('MEI', help='MEI Calling Mode')
     parser_mei.set_defaults(func=mei)
@@ -31,7 +34,7 @@ def get_args():
 
     #list to hold required group for parser snp, mei, sv
     reqs = []
-    for p in [parser_snp, parser_mei, parser_sv]:
+    for p in [parser_snp, parser_fnr, parser_mei, parser_sv]:
         req = p.add_argument_group('Required Options')
         p.add_argument('-i', metavar='input', 
                             help='Input VCF [stdin]')
@@ -75,6 +78,7 @@ def load_sample_map(infile):
 
     infile = open(infile, 'r')
     sample_map = defaultdict(dict)
+    animal_map = defaultdict(lambda: defaultdict(list))
     header = False
 
     for line in infile:
@@ -87,16 +91,22 @@ def load_sample_map(infile):
             header = line
             continue
 
-        assert line[4] == 'SCNT' or line[4] == 'Control', \
+        sample, animal, source, experiment, case = line
+
+        assert case == 'SCNT' or case == 'Control', \
             "Invalid sample map. Case must be one of \"SCNT\" or \"Control\""
 
-        sample_map[line[0]]['Animal'] = line[1]
-        sample_map[line[0]]['Source'] = line[2]
-        sample_map[line[0]]['Experiment'] = line[3]
-        sample_map[line[0]]['Case'] = line[4]
+        sample_map[sample]['Animal'] = animal
+        sample_map[sample]['Source'] = source
+        sample_map[sample]['Experiment'] = experiment
+        sample_map[sample]['Case'] = case
+
+        animal_map[animal][case].append(sample)
 
     infile.close()
-    return sample_map
+    return sample_map, animal_map
+
+
 
 def same_animal(smap, samples, i , j):
 
@@ -133,7 +143,7 @@ def snp(args):
     if args.vaf:    VAF=float(args.vaf)
     if args.svaf:   SVAF=float(args.svaf)
 
-    sample_map = load_sample_map(args.m)
+    sample_map, animal_map = load_sample_map(args.m)
 
     #gts012 sets the uncalled GTs to 3
     reader = cyvcf2.VCF(args.i, gts012=True)    
@@ -223,10 +233,6 @@ def snp(args):
             if not unique:
                 break
 
-            #GT call must match GT of interest
-            if GTs[i] != AAG:
-               continue
-
             #criteria for presence in given sample
             if DEPTHS[i] >= min_depth \
                 and DEPTHS[i] <= max_depth \
@@ -284,6 +290,88 @@ def snp(args):
                     writer.write_record(var)
 
     writer.close()
+
+
+
+def snp_fnr(args): 
+
+    #only concerned with autosome VAF cutoff
+    VAF=0.30
+
+    #gts012 sets the uncalled GTs to 3
+    reader = cyvcf2.VCF(args.i, gts012=True)    
+    
+    #get list of samples
+    samples = reader.samples
+
+    #sample to index map
+    stoi = {s: samples.index(s) for s in samples}
+
+    #load sample map and get animal sample groups
+    sample_map, animal_map = load_sample_map(args.m)
+    print animal_map
+
+    AAG_RR_MIN = numpy.power(10.,10.)
+
+    min_depth = 10
+    max_depth = 250
+
+    counter = Counter()
+
+    #iterate over vars
+    for var in reader:
+
+        #max alt allele balance for control samples
+        if not var.is_snp:
+            sys.stderr.write("Skipping Variant: Not SNP")
+            continue
+
+        #get RR and AAG genotype likelihoods
+        RR_PLs = unphred(var.gt_phred_ll_homref)
+        AAG_PLs = unphred(var.gt_phred_ll_het)
+
+        #get AAG/RR ratios
+        AAG_RR_ratios = numpy.true_divide(AAG_PLs, RR_PLs)
+
+        #get genotypes, depths, and alt allele depths
+        GTs = var.gt_types
+        DEPTHS = var.gt_depths
+        ALT_DEPTHS = var.gt_alt_depths
+
+        #get allele balances
+        ABs = numpy.true_divide(ALT_DEPTHS, DEPTHS)
+
+        for animal, group in animal_map.items():
+            present = False
+            #get sample name of control
+            control = group['Control'][0]
+            SCNTs = group['SCNT']
+
+            #if var was called het in the control,
+            if GTs[stoi[control]] == 1:
+
+                #check the samples.
+                for sample in SCNTs:
+
+                    #if at least one sample was called het, 
+                    #   var is present in mouse
+                    if GTs[stoi[sample]] == 1:
+                        present = True
+                        counter[control] += 1
+
+                        for sample in SCNTs:
+                            i = stoi[sample]
+
+                            if DEPTHS[i] >= min_depth \
+                            and DEPTHS[i] <= max_depth \
+                            and AAG_RR_ratios[i] >= AAG_RR_MIN \
+                            and ABs[i] >= VAF:
+
+                                counter[sample] += 1
+                        break
+
+    for sample in counter:
+        print sample, counter[sample]
 
 def sv(args):
 
