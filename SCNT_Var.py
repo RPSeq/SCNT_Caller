@@ -243,7 +243,8 @@ def snp(args):
             #criteria for presence in given sample
             if (DEPTHS[i] >= min_depth and
                 DEPTHS[i] <= max_depth and
-                AAG_RR_ratios[i] >= AAG_RR_MIN):
+                AAG_RR_ratios[i] >= AAG_RR_MIN and
+                GTs[i] == AAG):
 
                 if ABs[i] < VAF:
                     if args.low:
