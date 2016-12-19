@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys, numpy, pyfaidx
 from argparse import RawTextHelpFormatter, ArgumentParser
 from collections import defaultdict, Counter
@@ -213,6 +215,7 @@ def snp(args):
             MAX_VAF = 0.05
         elif var.is_indel:
             MAX_VAF = 0
+
         else:
             sys.stderr.write("Skipping Variant: Not SNP/Indel")
             continue
@@ -259,14 +262,11 @@ def snp(args):
                     #check for case/control/other
                     # control is only control from same animal
                     # other is any other sample
-                    control = False
-                    if same_animal(sample_map, samples, i, j):
-                        control = True
-
                     #if not control, RR_AAG_MIN is 1.
                     ratio_min = 1
-                    if control:
+                    if same_animal(sample_map, samples, i, j):
                         ratio_min = RR_AAG_MIN
+
 
                     #criteria for presence in other samples 
                     #   (need to make this control vs ALL j_ratio)
@@ -280,22 +280,22 @@ def snp(args):
                 if unique:
 
                     #get trinucleotide context (VCF coords are 1-based)
-                    context = genome[str(var.CHROM)][var.POS-2:var.POS+1]
+                    if var.is_snp:
+                        context = genome[str(var.CHROM)][var.POS-2:var.POS+1]
+                        #ts or tv?
+                        tstv = 'Tv'
+                        if var.is_transition:
+                            tstv = 'Tr'
 
-                    #ts or tv?
-                    tstv = 'Tv'
-                    if var.is_transition:
-                        tstv = 'Tr'
+                        var.INFO['CONTEXT'] = context.seq
+                        var.INFO['TYPE'] = tstv
 
-                    #set new info fields
-                    var.INFO['CONTEXT'] = context.seq
                     var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
                     var.INFO['CASE'] = sample_map[samples[i]]['Case']
                     var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
                     var.INFO['UNIQ'] = samples[i]
                     var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
                     var.INFO['FILTER'] = vaf_filt
-                    var.INFO['TYPE'] = tstv
 
                     #write record
                     writer.write_record(var)
