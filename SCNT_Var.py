@@ -2,7 +2,7 @@
 
 import sys, numpy, pyfaidx
 from argparse import RawTextHelpFormatter, ArgumentParser
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, namedtuple
 import cyvcf2
 
 
@@ -55,10 +55,10 @@ def get_args():
                         required=True)
 
     parser_snp.add_argument('--vaf', 
-                        help='Autosomal VAF Minimum for SNP call')
+                        help='VAF Minimum for SNP in autosome and X of females [0.30]')
 
-    parser_snp.add_argument('--svaf', 
-                        help='Sex VAF Minimum for SNP call')
+    parser_snp.add_argument('--mvaf', 
+                        help='VAF Minimum for SNP in X/Y of males [0.95]')
 
     parser_snp.add_argument('--low', action='store_true',
                         help='Annotate instead of discarding low VAF calls')
@@ -95,20 +95,24 @@ def load_sample_map(infile):
         line = line.strip().split("\t")
 
         if not header:
-            assert line == ['Sample', 'Animal', 'Source', 'Experiment', 'Case'], \
-                "Invalid sample map header, must match: \"Animal Sample Source Experiment Case\""
+            assert line == ['Sample', 'Animal', 'Source', 'Experiment', 'Case', 'Sex'], \
+                "Invalid sample map header, must match: \"Animal Sample Source Experiment Case Sex\""
             header = line
             continue
 
-        sample, animal, source, experiment, case = line
+        sample, animal, source, experiment, case, sex = line
 
         assert case == 'SCNT' or case == 'Control', \
             "Invalid sample map. Case must be one of \"SCNT\" or \"Control\""
+
+        assert sex == 'M' or sex == 'F', \
+            "Invalid sample map. Sex must be one of \"F\" or \"M\""
 
         sample_map[sample]['Animal'] = animal
         sample_map[sample]['Source'] = source
         sample_map[sample]['Experiment'] = experiment
         sample_map[sample]['Case'] = case
+        sample_map[sample]['Sex'] = sex
 
         animal_map[animal][case].append(sample)
 
@@ -120,13 +124,15 @@ def load_sample_map(infile):
 def same_animal(smap, samples, i , j):
 
     try:
-        if smap[samples[j]]['Animal'] == smap[samples[i]]['Animal']:
-            return True
+        return smap[samples[j]]['Animal'] == smap[samples[i]]['Animal']
+
     except KeyError:
         sys.stderr.write("Error: IDs in sample map do not match input .vcf samples")
         exit(0)
 
-    return False
+def is_control(smap, samples, i , j):
+    return (same_animal(smap, samples, i , j)
+            and )
 
 # ============================================
 # driver
@@ -148,15 +154,15 @@ def snp(args):
 
     #should look specifically at X chrom VAFs in males
     VAF=0.30
-    SVAF=0.95
+    MVAF=0.95
     if args.vaf:    VAF=float(args.vaf)
-    if args.svaf:   SVAF=float(args.svaf)
+    if args.mvaf:   MVAF=float(args.mvaf)
 
     sample_map, animal_map = load_sample_map(args.m)
 
     #gts012 sets the uncalled GTs to 3
-    reader = cyvcf2.VCF(args.i, gts012=True)    
-    
+    reader = cyvcf2.VCF(args.i, gts012=True)
+
 
     #get list of samples
     samples = reader.samples
@@ -168,8 +174,10 @@ def snp(args):
     reader.update("TISSUE", "String", 1, "Source Tissue Type")
     reader.update("CASE", "String", 1, "Control or SCNT?")
     reader.update("EXPT", "String", 1, "Experiment")
-    reader.update("FILTER", "String", 1, "VAF Filter PASS/FAIL")
     reader.update("CONTEXT", "String", 1, "Trinucleotide Context")
+
+    reader.add_filter_to_header({"ID":"LowVAF", "Description":"Somatic VAF below threshold"})
+    # reader.add_filter_to_header({"ID":"MGP", "Description":"Somatic variant masked by MGP"})
 
     if not args.o:
         writer = cyvcf2.Writer("/dev/stdout", reader)
@@ -182,45 +190,22 @@ def snp(args):
     min_depth = 10
     max_depth = 250
 
+    allosomes = set(["X", "Y"])
+
     #iterate over vars
     for var in reader:
 
-        #don't care about untigs
-        if 'GL' in var.CHROM or 'JH' in var.CHROM:
-            continue
+        unique = True
 
-        #for now, site must be genotyped in ALL samples.
-        #could lose some sensitivity here:
-        #often have multiple mouse strains in single experiment.
-        #if a region is deleted in one strain but not another,
-        # there will never be genotypes in that region in the del strain.
-        if var.call_rate < 1:
-            continue
-
-        # GT ids:
-        #   0=HOM_REF
-        #   1=HET
-        #   2=HOM_ALT
-        #   3=UNKNOWN
-        #alternate allele genotype is het
-        AAG = 1
-
-        #IF FEMALE, X AAG should still be 0/1
-        if var.CHROM == "X" or var.CHROM == "Y":
-            AAG = 2
-            VAF=SVAF
-
-        #max alt allele balance for control samples
+        # set max alt VAF for snp or indel
         if var.is_snp:
             MAX_VAF = 0.05
         elif var.is_indel:
-            MAX_VAF = 0
-
+            MAX_VAF = 0.00
         else:
             sys.stderr.write("Skipping Variant: Not SNP/Indel")
             continue
 
-        unique = True
 
         #get RR and AAG genotype likelihoods
         RR_PLs = unphred(var.gt_phred_ll_homref)
@@ -239,19 +224,29 @@ def snp(args):
         ABs = numpy.true_divide(ALT_DEPTHS, DEPTHS)
 
         for i in range(len(samples)):
-            vaf_filt = "PASS"
+            # dont waste time in uneeded loops
             if not unique:
                 break
 
-            #criteria for presence in given sample
-            if (DEPTHS[i] >= min_depth and
-                DEPTHS[i] <= max_depth and
-                AAG_RR_ratios[i] >= AAG_RR_MIN and
-                GTs[i] == AAG):
+            AAG = 1
+            MIN_VAF = VAF
 
-                if ABs[i] < VAF:
+            #change AAG to 1/1 and min vaf to male allosome min [0.95]
+            if sample_map[sample[i]]['Sex']=="M" and var.CHROM in allosomes:
+                AAG = 2
+                MIN_VAF = MVAF
+
+            VAF_FILT = False
+            
+
+            #criteria for presence in given sample
+            if (max_depth > DEPTHS[i] > min_depth 
+                and AAG_RR_ratios[i] >= AAG_RR_MIN 
+                and GTs[i] == AAG):
+
+                if ABs[i] < MIN_VAF:
                     if args.low:
-                        vaf_filt = "FAIL"
+                        VAF_FILT = True
                     else:
                         continue
                 
@@ -259,26 +254,22 @@ def snp(args):
                     if i == j:
                         continue
 
-                    #check for case/control/other
-                    # control is only control from same animal
-                    # other is any other sample
-                    #if not control, RR_AAG_MIN is 1.
+                    #default RR/AAG min is 1.
                     ratio_min = 1
+                    #if same animal
                     if same_animal(sample_map, samples, i, j):
-                        ratio_min = RR_AAG_MIN
+                        if not max_depth > DEPTHS[j] > min_depth:
+                            #this animal fails the depth check
+                        if smap[samples[i]]['Case'] != smap[samples[j]]['Case']:
+                            ratio_min = RR_AAG_MIN
 
-
-                    #criteria for presence in other samples 
-                    #   (need to make this control vs ALL j_ratio)
-                    if (DEPTHS[j] < min_depth or
-                        DEPTHS[j] > max_depth or
-                        ABs[j] > MAX_VAF or
+                    #criteria for failing or presence in other samples 
+                    if (ABs[j] > MAX_VAF or
                         RR_AAG_ratios[j] < ratio_min):
                         unique = False
                         break
 
                 if unique:
-
                     #get trinucleotide context (VCF coords are 1-based)
                     if var.is_snp:
                         context = genome[str(var.CHROM)][var.POS-2:var.POS+1]
@@ -290,12 +281,14 @@ def snp(args):
                         var.INFO['CONTEXT'] = context.seq
                         var.INFO['TYPE'] = tstv
 
-                    var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
-                    var.INFO['CASE'] = sample_map[samples[i]]['Case']
-                    var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
-                    var.INFO['UNIQ'] = samples[i]
+                    var.INFO['TISSUE'] = sample_map[sample]['Source']
+                    var.INFO['CASE'] = sample_map[sample]['Case']
+                    var.INFO['EXPT'] = sample_map[sample]['Experiment']
+                    var.INFO['UNIQ'] = sample
                     var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
-                    var.INFO['FILTER'] = vaf_filt
+
+                    if VAF_FILT:
+                        var.FILTER = "LowVAF"
 
                     #write record
                     writer.write_record(var)
