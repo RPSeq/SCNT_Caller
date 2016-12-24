@@ -287,8 +287,9 @@ def snp(args):
                     var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
 
                     if VAF_FILT:
-                        if var.FILTER:
-                            var.FILTER = [var.FILTER, "LowVAF"]
+                        f = var.FILTER
+                        if f:
+                            var.FILTER = [f, "LowVAF"]
                         else:
                             var.FILTER = ["LowVAF"]
                             
