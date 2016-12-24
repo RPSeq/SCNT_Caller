@@ -130,10 +130,6 @@ def same_animal(smap, samples, i , j):
         sys.stderr.write("Error: IDs in sample map do not match input .vcf samples")
         exit(0)
 
-def is_control(smap, samples, i , j):
-    return (same_animal(smap, samples, i , j)
-            and )
-
 # ============================================
 # driver
 # ============================================
@@ -232,7 +228,7 @@ def snp(args):
             MIN_VAF = VAF
 
             #change AAG to 1/1 and min vaf to male allosome min [0.95]
-            if sample_map[sample[i]]['Sex']=="M" and var.CHROM in allosomes:
+            if sample_map[samples[i]]['Sex']=="M" and var.CHROM in allosomes:
                 AAG = 2
                 MIN_VAF = MVAF
 
@@ -259,8 +255,11 @@ def snp(args):
                     #if same animal
                     if same_animal(sample_map, samples, i, j):
                         if not max_depth > DEPTHS[j] > min_depth:
+                            unique = False
+                            break
+
                             #this animal fails the depth check
-                        if smap[samples[i]]['Case'] != smap[samples[j]]['Case']:
+                        if sample_map[samples[i]]['Case'] != sample_map[samples[j]]['Case']:
                             ratio_min = RR_AAG_MIN
 
                     #criteria for failing or presence in other samples 
@@ -281,15 +280,18 @@ def snp(args):
                         var.INFO['CONTEXT'] = context.seq
                         var.INFO['TYPE'] = tstv
 
-                    var.INFO['TISSUE'] = sample_map[sample]['Source']
-                    var.INFO['CASE'] = sample_map[sample]['Case']
-                    var.INFO['EXPT'] = sample_map[sample]['Experiment']
-                    var.INFO['UNIQ'] = sample
+                    var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
+                    var.INFO['CASE'] = sample_map[samples[i]]['Case']
+                    var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
+                    var.INFO['UNIQ'] = samples[i]
                     var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
 
                     if VAF_FILT:
-                        var.FILTER = "LowVAF"
-
+                        if var.FILTER:
+                            var.FILTER = [var.FILTER, "LowVAF"]
+                        else:
+                            var.FILTER = ["LowVAF"]
+                            
                     #write record
                     writer.write_record(var)
 
@@ -475,7 +477,9 @@ def mei(args):
     samples = reader.samples  
     
     #read sample map
-    sample_map = load_sample_map(args.m)
+    sample_map, animal_map = load_sample_map(args.m)
+    print sample_map
+
 
     #add the new INFO tags
     reader.update("UNIQ", "String", 1, "Sample(s) with unique somatic variant")
@@ -490,37 +494,38 @@ def mei(args):
     else:
         writer = cyvcf2.Writer(args.o, reader)
 
-    min_su = 9
+    min_su = 6
     for var in reader:
         LP = var.INFO['LP']
         RP = var.INFO['RP']
-
-        if var.FILTER == 'PASS' and (LP + RP) > min_su:
+        if not var.FILTER and (LP + RP) > min_su:
+            unique = True
             GTs = var.gt_types
             RR_PLs = var.gt_phred_ll_homref
             AAG_PLs = var.gt_phred_ll_het
 
             for i in range(len(samples)):
-                unique = True
 
                 #heterozygote
                 if GTs[i] == 1:
-                    for j in range(num):
+                    for j in range(len(samples)):
                         if j != i:
                 
-                            if GTs[j] != 0 or RR_PLs[j] < -0.05:
+                            if GTs[j] != 0 or RR_PLs[j] > 0:
                                 unique = False
                                 break
 
-                    if unique:
-                        #set new info fields
-                        var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
-                        var.INFO['CASE'] = sample_map[samples[i]]['Case']
-                        var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
-                        var.INFO['UNIQ'] = samples[i]
-                        var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
-                        # var.INFO['FILTER'] = filt
-                        writer.write_record(var)
+            if unique:
+                # print RR_PLs
+                #set new info fields
+                var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
+                var.INFO['CASE'] = sample_map[samples[i]]['Case']
+                var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
+                var.INFO['UNIQ'] = samples[i]
+                # var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
+                # var.INFO['FILTER'] = filt
+                writer.write_record(var)
+
 
     writer.close()
 
