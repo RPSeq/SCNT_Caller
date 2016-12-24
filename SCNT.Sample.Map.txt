@@ -1,18 +1,18 @@
-Sample	Animal	Source	Experiment	Case
-C0	C	Spleen	MT	Control
-C1	C	MitralTuft	MT	SCNT
-C5	C	MitralTuft	MT	SCNT
-D0	D	Spleen	MT	Control
-D4	D	MitralTuft	MT	SCNT
-B1	B	Thymus	MT	Control
-B2	B	MitralTuft	MT	SCNT
-B3	B	MitralTuft	MT	SCNT
-B4	B	MitralTuft	MT	SCNT
-E0	E	Thymus	MT	Control
-E1	E	MitralTuft	MT	SCNT
-F0	F	Thymus	ROD	Control
-F1	F	NRL_ROD	ROD	SCNT
-G0	G	Thymus	ROD	Control
-G1	G	NRL_ROD	ROD	SCNT
-H0	H	Thymus	ROD	Control
-H1	H	NRL_ROD	ROD	SCNT
+Sample	Animal	Source	Experiment	Case	Sex
+C0	C	Spleen	MT	Control	F
+C1	C	MitralTuft	MT	SCNT	F
+C5	C	MitralTuft	MT	SCNT	F
+D0	D	Spleen	MT	Control	M
+D4	D	MitralTuft	MT	SCNT	M
+B1	B	Thymus	MT	Control	M
+B2	B	MitralTuft	MT	SCNT	M
+B3	B	MitralTuft	MT	SCNT	M
+B4	B	MitralTuft	MT	SCNT	M
+E0	E	Thymus	MT	Control	F
+E1	E	MitralTuft	MT	SCNT	F
+M_DY-Mouse_2-NRL-Thymus1	F	Thymus	ROD	Control	M
+M_DY-Mouse_2-NRL-NT1	F	NRL_ROD	ROD	SCNT	M
+M_DY-Mouse_3-NRL-Thymus2	G	Thymus	ROD	Control	M
+M_DY-Mouse_3-NRL-NT2	G	NRL_ROD	ROD	SCNT	M
+M_DY-Mouse_4-NRL-Thymus3	H	Thymus	ROD	Control	M
+M_DY-Mouse_4-NRL-NT3	H	NRL_ROD	ROD	SCNT	M
