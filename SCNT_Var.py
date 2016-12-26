@@ -479,7 +479,6 @@ def mei(args):
     
     #read sample map
     sample_map, animal_map = load_sample_map(args.m)
-    print sample_map
 
 
     #add the new INFO tags
@@ -502,10 +501,15 @@ def mei(args):
         if not var.FILTER and (LP + RP) > min_su:
             unique = True
             GTs = var.gt_types
-            RR_PLs = var.gt_phred_ll_homref
-            AAG_PLs = var.gt_phred_ll_het
+
+            #strange behaviour... MELT PLs read as the input value *10. divide by 10 to correct.
+            #should have MELT return positive integers rather than negative floats.
+            RR_PLs = numpy.divide(var.gt_phred_ll_homref, 10.)
+            AAG_PLs = numpy.divide(var.gt_phred_ll_het, 10.)
 
             for i in range(len(samples)):
+                if not unique:
+                    break
 
                 #heterozygote
                 if GTs[i] == 1:
@@ -516,16 +520,16 @@ def mei(args):
                                 unique = False
                                 break
 
-            if unique:
-                # print RR_PLs
-                #set new info fields
-                var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
-                var.INFO['CASE'] = sample_map[samples[i]]['Case']
-                var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
-                var.INFO['UNIQ'] = samples[i]
-                # var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
-                # var.INFO['FILTER'] = filt
-                writer.write_record(var)
+                    if unique:
+                        # print RR_PLs
+                        #set new info fields
+                        var.INFO['TISSUE'] = sample_map[samples[i]]['Source']
+                        var.INFO['CASE'] = sample_map[samples[i]]['Case']
+                        var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
+                        var.INFO['UNIQ'] = samples[i]
+                        # var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
+                        # var.INFO['FILTER'] = filt
+                        writer.write_record(var)
 
 
     writer.close()
