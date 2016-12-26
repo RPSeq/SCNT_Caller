@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
-import sys, numpy, pyfaidx
+import sys, numpy, pyfaidx, cyvcf2
 from argparse import RawTextHelpFormatter, ArgumentParser
-from collections import defaultdict, Counter, namedtuple
-import cyvcf2
+from collections import defaultdict, Counter
 
 
 __author__ = "Ryan Smith (ryanpsmith@wustl.edu)"
@@ -59,9 +58,6 @@ def get_args():
 
     parser_snp.add_argument('--mvaf', 
                         help='VAF Minimum for SNP in X/Y of males [0.95]')
-
-    parser_snp.add_argument('--low', action='store_true',
-                        help='Annotate instead of discarding low VAF calls')
 
     reqs[1].add_argument('-c', metavar='counts',
                         help='Counts output file',
@@ -173,7 +169,7 @@ def snp(args):
     reader.update("CONTEXT", "String", 1, "Trinucleotide Context")
 
     reader.add_filter_to_header({"ID":"LowVAF", "Description":"Somatic VAF below threshold"})
-    # reader.add_filter_to_header({"ID":"MGP", "Description":"Somatic variant masked by MGP"})
+    reader.add_filter_to_header({"ID":"MGP", "Description":"Variant present in MGP"})
 
     if not args.o:
         writer = cyvcf2.Writer("/dev/stdout", reader)
@@ -241,10 +237,7 @@ def snp(args):
                 and GTs[i] == AAG):
 
                 if ABs[i] < MIN_VAF:
-                    if args.low:
-                        VAF_FILT = True
-                    else:
-                        continue
+                    VAF_FILT = True
                 
                 for j in range(len(samples)):
                     if i == j:
@@ -286,13 +279,23 @@ def snp(args):
                     var.INFO['UNIQ'] = samples[i]
                     var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
 
+                    filters = []
+                    f = var.FILTER
+                    if f:
+                        filters = f.split(";")
+
                     if VAF_FILT:
-                        f = var.FILTER
-                        if f:
-                            var.FILTER = [f, "LowVAF"]
-                        else:
-                            var.FILTER = ["LowVAF"]
-                            
+                        filters.append("LowVAF")
+
+                    try:
+                        var.INFO["MGP"]
+                        filters.append("MGP")
+                    except KeyError:
+                        pass
+
+                    if filters:
+                        var.FILTER = filters
+
                     #write record
                     writer.write_record(var)
 
@@ -494,18 +497,22 @@ def mei(args):
     else:
         writer = cyvcf2.Writer(args.o, reader)
 
-    min_su = 6
+    min_su = 5
     for var in reader:
         LP = var.INFO['LP']
         RP = var.INFO['RP']
-        if not var.FILTER and (LP + RP) > min_su:
+        if not var.FILTER and (LP > min_su and RP > min_su):
             unique = True
             GTs = var.gt_types
 
             #strange behaviour... MELT PLs read as the input value *10. divide by 10 to correct.
             #should have MELT return positive integers rather than negative floats.
-            RR_PLs = numpy.divide(var.gt_phred_ll_homref, 10.)
-            AAG_PLs = numpy.divide(var.gt_phred_ll_het, 10.)
+            RR_PLs = unphred(numpy.divide(var.gt_phred_ll_homref, 10.))
+            AAG_PLs = unphred(numpy.divide(var.gt_phred_ll_het, 10.))
+
+            #get AAG/RR and RR/AAG likelihood ratios
+            AAG_RR_ratios = numpy.true_divide(AAG_PLs, RR_PLs)
+            RR_AAG_ratios = numpy.true_divide(RR_PLs, AAG_PLs)
 
             for i in range(len(samples)):
                 if not unique:
@@ -516,7 +523,7 @@ def mei(args):
                     for j in range(len(samples)):
                         if j != i:
                 
-                            if GTs[j] != 0 or RR_PLs[j] > 0:
+                            if GTs[j] != 0 or RR_PLs[j] < 0.95:
                                 unique = False
                                 break
 
@@ -531,9 +538,7 @@ def mei(args):
                         # var.INFO['FILTER'] = filt
                         writer.write_record(var)
 
-
     writer.close()
-
 
 
 if __name__ == "__main__":
