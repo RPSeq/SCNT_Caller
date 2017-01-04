@@ -126,6 +126,7 @@ def same_animal(smap, samples, i , j):
         sys.stderr.write("Error: IDs in sample map do not match input .vcf samples")
         exit(0)
 
+
 # ============================================
 # driver
 # ============================================
@@ -251,7 +252,8 @@ def snp(args):
                             unique = False
                             break
 
-                            #this animal fails the depth check
+                        #if different case, set ratio_min to control RR_AAG min
+                        #thus, SCNT lines for the same animal are treated as the control for controls
                         if sample_map[samples[i]]['Case'] != sample_map[samples[j]]['Case']:
                             ratio_min = RR_AAG_MIN
 
@@ -308,6 +310,7 @@ def snp_fnr(args):
     #only concerned with autosome VAF cutoff
     VAF=0.30
 
+
     #gts012 sets the uncalled GTs to 3
     reader = cyvcf2.VCF(args.i, gts012=True)
 
@@ -338,19 +341,20 @@ def snp_fnr(args):
     max_depth = 250
 
     counter = Counter()
+    HIcounter = Counter()
 
     #iterate over vars
     for var in reader:
 
         #false by default
         gss = False
-
+        PASS = False
         animals = []
         present = []
 
         #max alt allele balance for control samples
-        if not var.is_snp:
-            sys.stderr.write("Skipping Variant: Not SNP")
+        if not (var.is_snp or var.is_indel):
+            sys.stderr.write("Skipping Variant: Not SNP/Indel")
             continue
 
         #get RR and AAG genotype likelihoods
@@ -368,6 +372,8 @@ def snp_fnr(args):
         #get allele balances
         ABs = numpy.true_divide(ALT_DEPTHS, DEPTHS)
 
+        if not var.FILTER: PASS = True
+
         for animal, group in animal_map.items():
 
             #get sample name of control
@@ -384,6 +390,8 @@ def snp_fnr(args):
             #   var is present in mouse
             if 1 in [GTs[stoi[x]] for x in ALL]:
                 counter[control] += 1
+                if PASS: 
+                    HIcounter[control] += 1
                 gss = True
                 control_depth = False
                 if (DEPTHS[stoi[control]] >= min_depth and
@@ -402,8 +410,11 @@ def snp_fnr(args):
                         ABs[i] >= VAF and
                         GTs[i] == 1):
 
+
                         counter[sample] += 1
                         present.append(sample)
+                        if PASS:
+                            HIcounter[sample] += 1
 
         if gss:
             var.INFO['ANIMAL'] = ",".join(animals)
@@ -411,10 +422,10 @@ def snp_fnr(args):
             writer.write_record(var)
 
     for sample in sorted(counter.keys()):
-        outstr = "\t".join([sample, sample_map[sample]['Case'], str(counter[sample])])
+        outstr = "\t".join([sample, sample_map[sample]['Case'], str(counter[sample]), str(HIcounter[sample])])
         counts_out.write(outstr+"\n")
 
-    writer.close()
+    # writer.close()
     counts_out.close()
 
 
