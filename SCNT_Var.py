@@ -421,9 +421,39 @@ def snp_fnr(args):
             var.INFO['PRESENT'] = ",".join(present)
             writer.write_record(var)
 
+    counts_out.write("Sample\tCase\tCount\tHQCount\n")
     for sample in sorted(counter.keys()):
         outstr = "\t".join([sample, sample_map[sample]['Case'], str(counter[sample]), str(HIcounter[sample])])
         counts_out.write(outstr+"\n")
+
+    counts_out.write("\n\nAnimal\tFNR\tHQFNR\n")
+
+    for animal, group in sorted(animal_map.items()):
+
+        #get sample name of control
+        control = group['Control'][0]
+        SCNTs = group['SCNT']
+
+        present = counter[control]
+
+        rates = []
+        hrates = []
+
+        for sample in SCNTs:
+            called = counter[sample]
+            hcalled = HIcounter[sample]
+            rate = 1.0-(called/float(present))
+            hrate = 1.0-(hcalled/float(present))
+            rates.append(rate)
+            hrates.append(hrate)
+
+        a_rate = numpy.mean(rates)
+        a_hrate = numpy.mean(hrates)
+
+        counts_out.write("\t".join([animal, str(a_rate), str(a_hrate)])+"\n")
+
+
+
 
     # writer.close()
     counts_out.close()
