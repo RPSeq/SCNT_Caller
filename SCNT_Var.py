@@ -168,6 +168,9 @@ def snp(args):
     reader.update("CASE", "String", 1, "Control or SCNT?")
     reader.update("EXPT", "String", 1, "Experiment")
     reader.update("CONTEXT", "String", 1, "Trinucleotide Context")
+    reader.update("UDP", "Integer", 1, "Depth at uniq site")
+    reader.update("AAGR", "Float", 1, "AAG/RR Ratio")
+    reader.update("UGQ", "Float", 1, "Uniq Genotype Quality")
 
     reader.add_filter_to_header({"ID":"LowVAF", "Description":"Somatic VAF below threshold"})
     reader.add_filter_to_header({"ID":"MGP", "Description":"Variant present in MGP"})
@@ -187,6 +190,7 @@ def snp(args):
 
     #iterate over vars
     for var in reader:
+        
 
         unique = True
 
@@ -212,6 +216,7 @@ def snp(args):
         GTs = var.gt_types
         DEPTHS = var.gt_depths
         ALT_DEPTHS = var.gt_alt_depths
+        QUALS = var.gt_quals
 
         #get allele balances
         ABs = numpy.true_divide(ALT_DEPTHS, DEPTHS)
@@ -280,6 +285,9 @@ def snp(args):
                     var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
                     var.INFO['UNIQ'] = samples[i]
                     var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
+                    var.INFO['UDP'] = str(DEPTHS[i])
+                    var.INFO['AAGR'] = str(AAG_RR_ratios[i])
+                    var.INFO['UGQ'] = str(QUALS[i])
 
                     filters = []
                     f = var.FILTER
@@ -491,7 +499,7 @@ def sv(args):
         ABs = var.format('AB')
 
         for i in range(len(samples)):
-            if SUs[i][0] >= min_su and ABs[i][0] >= 0.20:
+            if SUs[i][0] >= min_su and ABs[i][0] >= 0.15:
                 unique = True
 
                 for j in range(len(samples)):
