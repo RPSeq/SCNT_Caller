@@ -9,9 +9,9 @@ D0
 D4
 E0
 E1
-M_DY-Mouse_2-NRL-Thymus1
 M_DY-Mouse_2-NRL-NT1
-M_DY-Mouse_3-NRL-Thymus2
+M_DY-Mouse_2-NRL-Thymus1
 M_DY-Mouse_3-NRL-NT2
-M_DY-Mouse_4-NRL-Thymus3
+M_DY-Mouse_3-NRL-Thymus2
 M_DY-Mouse_4-NRL-NT3
+M_DY-Mouse_4-NRL-Thymus3
