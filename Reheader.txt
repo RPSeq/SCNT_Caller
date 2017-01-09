@@ -9,9 +9,9 @@ D0
 D4
 E0
 E1
-F1
-F0
-G1
-G0
-H1
-H0
+MF1
+MF0
+MG1
+MG0
+MH1
+MH0
