@@ -477,7 +477,7 @@ def sv(args):
     samples = reader.samples  
     
     #read sample map
-    sample_map = load_sample_map(args.m)
+    sample_map, animal_map = load_sample_map(args.m)
 
     #add the new INFO tags
     reader.update("UNIQ", "String", 1, "Sample(s) with unique somatic variant")
