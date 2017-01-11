@@ -168,6 +168,7 @@ def snp(args):
     reader.update("CASE", "String", 1, "Control or SCNT?")
     reader.update("EXPT", "String", 1, "Experiment")
     reader.update("CONTEXT", "String", 1, "Trinucleotide Context")
+    reader.update("ANIMAL", "String", 1, "ID of origin animal")
     reader.update("UDP", "Integer", 1, "Depth at uniq site")
     reader.update("AAGR", "Float", 1, "AAG/RR Ratio")
     reader.update("UGQ", "Float", 1, "Uniq Genotype Quality")
@@ -288,6 +289,7 @@ def snp(args):
                     var.INFO['UDP'] = str(DEPTHS[i])
                     var.INFO['AAGR'] = str(AAG_RR_ratios[i])
                     var.INFO['UGQ'] = str(QUALS[i])
+                    var.INFO['ANIMAL'] = sample_map[samples[i]]['Animal']
 
                     filters = []
                     f = var.FILTER
@@ -429,12 +431,12 @@ def snp_fnr(args):
             var.INFO['PRESENT'] = ",".join(present)
             writer.write_record(var)
 
-    counts_out.write("Sample\tCase\tCount\tHQCount\n")
+    counts_out.write("#COUNTS\tSample\tCase\tCount\tHQCount\n")
     for sample in sorted(counter.keys()):
-        outstr = "\t".join([sample, sample_map[sample]['Case'], str(counter[sample]), str(HIcounter[sample])])
+        outstr = "\t".join(["#COUNT", sample, sample_map[sample]['Case'], str(counter[sample]), str(HIcounter[sample])])
         counts_out.write(outstr+"\n")
 
-    counts_out.write("\n\nAnimal\tFNR\tHQFNR\n")
+    counts_out.write("#FNR\tAnimal\tFNR\tHQFNR\n")
 
     for animal, group in sorted(animal_map.items()):
 
@@ -458,9 +460,7 @@ def snp_fnr(args):
         a_rate = numpy.mean(rates)
         a_hrate = numpy.mean(hrates)
 
-        counts_out.write("\t".join([animal, str(a_rate), str(a_hrate)])+"\n")
-
-
+        counts_out.write("\t".join(["#FNR", animal, str(a_rate), str(a_hrate)])+"\n")
 
 
     # writer.close()
@@ -485,6 +485,7 @@ def sv(args):
     reader.update("TISSUE", "String", 1, "Source Tissue Type")
     reader.update("CASE", "String", 1, "Control or SCNT?")
     reader.update("EXPT", "String", 1, "Experiment")
+    reader.update("ANIMAL", "String", 1, "ID of origin animal")
     # reader.update("FILTER", "String", 1, "VAF Filter PASS/FAIL")
 
     if not args.o:
@@ -499,13 +500,13 @@ def sv(args):
         ABs = var.format('AB')
 
         for i in range(len(samples)):
-            if SUs[i][0] >= min_su and ABs[i][0] >= 0.15:
+            if SUs[i][0] >= min_su and ABs[i][0] >= 0.20:
                 unique = True
 
                 for j in range(len(samples)):
                     if j != i:
 
-                        if ABs[j][0] > 0.05:
+                        if ABs[j][0] > 0.0:
                             unique = False
                             break
 
@@ -516,7 +517,9 @@ def sv(args):
                     var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
                     var.INFO['UNIQ'] = samples[i]
                     var.INFO['UAB'] = str(numpy.around(ABs[i][0], 3))
+                    var.INFO['ANIMAL'] = sample_map[samples[i]]['Animal']
                     # var.INFO['FILTER'] = filt
+
                     writer.write_record(var)
     writer.close()
 
@@ -535,22 +538,24 @@ def mei(args):
 
     #add the new INFO tags
     reader.update("UNIQ", "String", 1, "Sample(s) with unique somatic variant")
-    reader.update("UAB", "Float", 1, "Allele Balance in UNIQ sample")
+    # reader.update("UAB", "Float", 1, "Allele Balance in UNIQ sample")
     reader.update("TISSUE", "String", 1, "Source Tissue Type")
     reader.update("CASE", "String", 1, "Control or SCNT?")
     reader.update("EXPT", "String", 1, "Experiment")
-    reader.update("FILTER", "String", 1, "VAF Filter PASS/FAIL")
+    reader.update("ANIMAL", "String", 1, "ID of origin animal")
+    # reader.update("PL", "String", 1, "RR")
 
     if not args.o:
         writer = cyvcf2.Writer("/dev/stdout", reader)
     else:
         writer = cyvcf2.Writer(args.o, reader)
 
-    min_su = 5
+    min_su = 3
     for var in reader:
         LP = var.INFO['LP']
         RP = var.INFO['RP']
         if not var.FILTER and (LP > min_su and RP > min_su):
+        # if (LP > min_su and RP > min_su):
             unique = True
             GTs = var.gt_types
 
@@ -572,7 +577,7 @@ def mei(args):
                     for j in range(len(samples)):
                         if j != i:
                 
-                            if GTs[j] != 0 or RR_PLs[j] < 0.95:
+                            if GTs[j] != 0 or RR_PLs[j] < 0.90:
                                 unique = False
                                 break
 
@@ -583,8 +588,7 @@ def mei(args):
                         var.INFO['CASE'] = sample_map[samples[i]]['Case']
                         var.INFO['EXPT'] = sample_map[samples[i]]['Experiment']
                         var.INFO['UNIQ'] = samples[i]
-                        # var.INFO['UAB'] = str(numpy.around(ABs[i], 3))
-                        # var.INFO['FILTER'] = filt
+                        var.INFO['ANIMAL'] = sample_map[samples[i]]['Animal']
                         writer.write_record(var)
 
     writer.close()
