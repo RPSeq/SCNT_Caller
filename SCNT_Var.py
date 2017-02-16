@@ -550,6 +550,8 @@ def mei(args):
     else:
         writer = cyvcf2.Writer(args.o, reader)
 
+    allosomes = set(["X", "Y"])
+
     min_su = 3
     for var in reader:
         LP = var.INFO['LP']
@@ -571,13 +573,17 @@ def mei(args):
             for i in range(len(samples)):
                 if not unique:
                     break
+                AAG = 1
+                #change AAG to 1/1 and min vaf to male allosome min [0.95]
+                if sample_map[samples[i]]['Sex']=="M" and var.CHROM in allosomes:
+                    AAG = 2
 
                 #heterozygote
-                if GTs[i] == 1:
+                if GTs[i] == AAG:
                     for j in range(len(samples)):
                         if j != i:
                 
-                            if GTs[j] != 0 or RR_PLs[j] < 0.90:
+                            if GTs[j] != 0 or RR_PLs[j] < 0.60:
                                 unique = False
                                 break
 
