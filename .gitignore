@@ -1,3 +1,7 @@
 data
 .DS_Store
 *.xlsx
+*.df
+*.vcf
+*.tab
+*.bedpe
