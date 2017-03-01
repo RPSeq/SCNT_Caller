@@ -500,7 +500,7 @@ def sv(args):
         ABs = var.format('AB')
 
         for i in range(len(samples)):
-            if SUs[i][0] >= min_su and ABs[i][0] >= 0.20:
+            if SUs[i][0] >= min_su and ABs[i][0] >= 0.15:
                 unique = True
 
                 for j in range(len(samples)):
